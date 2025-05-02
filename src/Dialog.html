@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<base target="_top" />
+		<style>
+			body {
+				font-family: sans-serif;
+			}
+			input,
+			button {
+				margin: 4px 0;
+				width: 100%;
+				padding: 6px;
+				box-sizing: border-box;
+			}
+			.result-row {
+				border: 1px solid #ccc;
+				padding: 6px;
+				margin-bottom: 4px;
+				display: flex;
+				justify-content: space-between;
+				align-items: center;
+			}
+			.result-text {
+				flex: 1;
+				cursor: pointer;
+			}
+			.delete-btn {
+				color: red;
+				font-weight: bold;
+				cursor: pointer;
+				margin-left: 10px;
+			}
+			.result-row:hover {
+				background: #f9f9f9;
+			}
+			#resultsInfo {
+				font-weight: bold;
+				margin-top: 10px;
+			}
+		</style>
+	</head>
+	<body>
+		<h3>Find and Edit Word <button onclick="showAddForm()">➕</button></h3>
+
+		<!-- Search Form -->
+		<form id="searchForm" onsubmit="handleSearch(event)">
+			<input type="text" id="searchInput" placeholder="Enter PL or UA word" />
+		</form>
+
+		<!-- Results Section -->
+		<div id="resultsInfo"></div>
+		<div id="results"></div>
+
+		<!-- Edit Form Section -->
+		<div id="editor" style="display: none">
+			<h4>Edit Selected</h4>
+			<input type="text" id="plInput" placeholder="Polish" />
+			<input type="text" id="uaInput" placeholder="Ukrainian" />
+			<button onclick="update()">Update</button>
+			<button onclick="cancelEdit()">Cancel</button>
+		</div>
+
+		<!-- Add Form Section -->
+		<div id="add-form" style="display: none">
+			<h4>Add a new pair</h4>
+			<input type="text" id="plInputAdd" placeholder="Polish" />
+			<input type="text" id="uaInputAdd" placeholder="Ukrainian" />
+			<button onclick="add()">Add</button>
+			<button onclick="cancelAdd()">Cancel</button>
+		</div>
+
+		<script>
+			let currentRow = null;
+
+			const addForm = document.getElementById("add-form");
+
+			// Trigger search when user submits the form
+			function handleSearch(e) {
+				e.preventDefault(); // Prevent form submission from reloading the dialog
+				search(); // Trigger the search logic
+			}
+
+			// Perform search based on the query
+			function search() {
+				const query = document.getElementById("searchInput").value.trim();
+				const resultsDiv = document.getElementById("results");
+				const infoDiv = document.getElementById("resultsInfo");
+				const editor = document.getElementById("editor");
+
+				resultsDiv.innerHTML = "";
+				infoDiv.textContent = "";
+				editor.style.display = "none"; // Hide editor when performing search
+
+				if (!query) return;
+
+				google.script.run
+					.withSuccessHandler((results) => {
+						if (!results || results.length === 0) {
+							infoDiv.textContent = "No matches found.";
+							return;
+						}
+
+						infoDiv.textContent = `${results.length} result${
+							results.length !== 1 ? "s" : ""
+						} found`;
+
+						results.forEach((item) => {
+							const row = document.createElement("div");
+							row.className = "result-row";
+
+							const text = document.createElement("div");
+							text.className = "result-text";
+							text.textContent = `Row ${item.rowIndex}: PL: ${item.pl} | UA: ${item.ua}`;
+							text.onclick = () => {
+								currentRow = item.rowIndex;
+								document.getElementById("plInput").value = item.pl;
+								document.getElementById("uaInput").value = item.ua;
+								resultsDiv.style.display = "none"; // Hide results when editing
+								editor.style.display = "block"; // Show editor
+							};
+
+							const del = document.createElement("span");
+							del.className = "delete-btn";
+							del.textContent = "❌";
+							del.onclick = (e) => {
+								e.stopPropagation();
+								if (
+									confirm(
+										`Delete row ${item.rowIndex}?\nPL: "${item.pl}"\nUA: "${item.ua}"`
+									)
+								) {
+									google.script.run
+										.withSuccessHandler(() => {
+											alert("Row deleted!");
+											search(); // Only refresh results, don't clear editor
+										})
+										.deleteRow(item.rowIndex);
+								}
+							};
+
+							row.appendChild(text);
+							row.appendChild(del);
+							resultsDiv.appendChild(row);
+						});
+					})
+					.findWords(query);
+			}
+
+			// Update a row based on user input
+			function update() {
+				const pl = document.getElementById("plInput").value.trim();
+				const ua = document.getElementById("uaInput").value.trim();
+				if (!pl || !ua || currentRow === null) return;
+
+				google.script.run
+					.withSuccessHandler(() => {
+						alert(
+							"Pair: PL - " +
+								pl +
+								", UA - " +
+								ua +
+								" in the row " +
+								currentRow +
+								" was updated successfully!"
+						);
+						cancelEdit(); // Hide the editor form after update
+						search(); // Refresh result list
+					})
+					.updateRow(currentRow, pl, ua);
+			}
+
+			// Cancel the editing and show the search results again
+			function cancelEdit() {
+				document.getElementById("plInput").value = "";
+				document.getElementById("uaInput").value = "";
+				document.getElementById("editor").style.display = "none"; // Hide editor
+				document.getElementById("results").style.display = "block"; // Show results
+				currentRow = null;
+			}
+
+			function showAddForm() {
+				addForm.style.display = "block"; // Show editor
+				editor.style.display = "none"; // Show editor
+				document.getElementById("results").style.display = "none"; // Hide results
+			}
+
+			// Add a row based on user input
+			function add() {
+				const pl = document.getElementById("plInputAdd").value.trim();
+				const ua = document.getElementById("uaInputAdd").value.trim();
+				if (!pl || !ua) return alert("No values provided...");
+
+				google.script.run
+					.withSuccessHandler(() => {
+						alert(
+							"New pair: PL - " +
+								pl +
+								", UA - " +
+								ua +
+								" was added successfully!"
+						);
+						cancelAdd(); // Hide the editor form after adding
+						search(); // Refresh result list
+					})
+					.addNewPair(pl, ua);
+			}
+
+			// Cancel the adding and show the search results again
+			function cancelAdd() {
+				document.getElementById("plInputAdd").value = "";
+				document.getElementById("uaInputAdd").value = "";
+				document.getElementById("add-form").style.display = "none"; // Hide editor
+				document.getElementById("results").style.display = "block"; // Show results
+			}
+		</script>
+	</body>
+</html>
